@@ -55,5 +55,4 @@ private:
 	void Data2Hex(CString& str, const std::vector<BYTE>& data);
 	void ReadThread();
 	void TestThread();
-public:
 };

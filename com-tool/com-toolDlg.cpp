@@ -142,6 +142,8 @@ BOOL CcomtoolDlg::OnInitDialog()
     ((CButton*)GetDlgItem(IDC_CHECK_HEX_SEND))->SetCheck(1);
     ((CButton*)GetDlgItem(IDC_CHECK_ALWAYSSEND))->SetCheck(1);
 
+	SetForegroundWindow();
+
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
 
@@ -265,7 +267,6 @@ void CcomtoolDlg::OnBnClickedBtnTest()
 void CcomtoolDlg::TestThread()
 {
 	m_test_model = true;
-	OnBnClickedBtnClear();
 	AddContent(L"开始串口测试...\r\n");
 
 	GetDlgItem(IDC_BTN_OPEN)->EnableWindow(FALSE);
@@ -284,6 +285,11 @@ void CcomtoolDlg::TestThread()
 	GetDlgItem(IDC_BTN_TEST)->EnableWindow();
 	AddContent(L"串口测试完成...\r\n");
 	m_test_model = false;
+
+	if (((CButton*)GetDlgItem(IDC_CHECK_ALWAYS_TEST))->GetCheck()) 
+	{
+		OnBnClickedBtnTest();
+	}
 }
 
 
