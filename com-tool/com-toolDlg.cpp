@@ -139,7 +139,8 @@ BOOL CcomtoolDlg::OnInitDialog()
     combo->SetCurSel(0);
 
 	((CButton*)GetDlgItem(IDC_CHECK_HEX_DISPLAY))->SetCheck(1);
-	((CButton*)GetDlgItem(IDC_CHECK_HEX_SEND))->SetCheck(1);
+    ((CButton*)GetDlgItem(IDC_CHECK_HEX_SEND))->SetCheck(1);
+    ((CButton*)GetDlgItem(IDC_CHECK_ALWAYSSEND))->SetCheck(1);
 
 	return TRUE;  // return TRUE  unless you set the focus to a control
 }
