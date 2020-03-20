@@ -4,6 +4,7 @@
 
 #pragma once
 #include "enumser.h"
+#include <thread>
 
 
 // CcomtoolDlg dialog
@@ -33,9 +34,26 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 public:
-    afx_msg void OnBnClickedBtnOpen();
-    afx_msg void OnBnClickedBtnTest();
+	afx_msg void OnBnClickedBtnOpen();
+	afx_msg void OnBnClickedBtnClose();
+	afx_msg void OnBnClickedBtnTest();
+	afx_msg void OnBnClickedBtnSend();
+	afx_msg void OnBnClickedCheckAlwaysSend();
+	afx_msg void OnBnClickedBtnClear();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 
 private:
-	CEnumerateSerial::CNamesArray m_names;
+	CEnumerateSerial::CNamesArray m_coms;
+	HANDLE m_port;
+	std::thread m_read_thread, m_test_thread;
+	bool m_test_model = false;
+
+private:
+	BOOL OpenSerialPort(CString strCom);
+	void AddContent(CString strMsg, DWORD size = 0);
+	void Hex2Data(const CString& str, std::vector<BYTE>& data);
+	void Data2Hex(CString& str, const std::vector<BYTE>& data);
+	void ReadThread();
+	void TestThread();
+public:
 };
