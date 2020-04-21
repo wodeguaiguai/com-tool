@@ -138,6 +138,7 @@ BOOL CcomtoolDlg::OnInitDialog()
 
     combo->SetCurSel(0);
 
+	((CComboBox*)GetDlgItem(IDC_COMBO_BANDRATE))->SetCurSel(5);
 	((CButton*)GetDlgItem(IDC_CHECK_HEX_DISPLAY))->SetCheck(1);
     ((CButton*)GetDlgItem(IDC_CHECK_HEX_SEND))->SetCheck(1);
     ((CButton*)GetDlgItem(IDC_CHECK_ALWAYSSEND))->SetCheck(1);
@@ -201,12 +202,12 @@ HCURSOR CcomtoolDlg::OnQueryDragIcon()
 BOOL CcomtoolDlg::OpenSerialPort(CString strCom)
 {
 	strCom.Format(L"\\\\.\\%s", strCom);
-	m_port = CreateFile(strCom, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
-	if (m_port == INVALID_HANDLE_VALUE) {
-		m_port = NULL;
+	m_hSerialComm = CreateFile(strCom, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+	if (m_hSerialComm == INVALID_HANDLE_VALUE) {
+		m_hSerialComm = NULL;
 		if (m_test_model) {
 			CString strError;
-			strError.Format(L"打开%s失败...\r\n", strCom.Right(strCom.GetLength() - 4));
+			strError.Format(L"打开%s失败 %d...\r\n", strCom.Right(strCom.GetLength() - 4), GetLastError());
 			AddContent(strError);
 		}
 		return FALSE;
@@ -217,6 +218,21 @@ BOOL CcomtoolDlg::OpenSerialPort(CString strCom)
 		strInfo.Format(L"打开%s成功...\r\n", strCom.Right(strCom.GetLength() - 4));
 		AddContent(strInfo);
 	}
+
+	// config com
+    DCB dcbConfig;
+    if (GetCommState(m_hSerialComm, &dcbConfig))
+    {
+        CString strBaudRate;
+        GetDlgItemText(IDC_COMBO_COMLIST, strBaudRate);
+        dcbConfig.BaudRate = _ttoi(strBaudRate);
+        dcbConfig.ByteSize = 8;
+        dcbConfig.Parity = NOPARITY;
+        dcbConfig.StopBits = ONESTOPBIT;
+        dcbConfig.fBinary = TRUE;
+        dcbConfig.fParity = TRUE;
+    }
+	SetCommState(m_hSerialComm, &dcbConfig);
 
 	m_read_thread = std::move(std::thread(std::bind(&CcomtoolDlg::ReadThread, this)));
 
@@ -245,9 +261,10 @@ void CcomtoolDlg::OnBnClickedBtnOpen()
 
 void CcomtoolDlg::OnBnClickedBtnClose()
 {
-	CloseHandle(m_port);
-	m_port = NULL;
-	Sleep(100);
+    SetCommMask(m_hSerialComm, EV_BREAK);
+	CloseHandle(m_hSerialComm);
+	m_hSerialComm = NULL;
+
 	if (!m_test_model)
 	{
 		GetDlgItem(IDC_BTN_OPEN)->EnableWindow();
@@ -267,7 +284,9 @@ void CcomtoolDlg::OnBnClickedBtnTest()
 void CcomtoolDlg::TestThread()
 {
 	m_test_model = true;
-	AddContent(L"开始串口测试...\r\n");
+	CString strMsg;
+	strMsg.Format(L"第%d次测试开始...\r\n", m_test_times);
+	AddContent(strMsg);
 
 	GetDlgItem(IDC_BTN_OPEN)->EnableWindow(FALSE);
 	GetDlgItem(IDC_BTN_TEST)->EnableWindow(FALSE);
@@ -282,13 +301,19 @@ void CcomtoolDlg::TestThread()
 	}
 
 	GetDlgItem(IDC_BTN_OPEN)->EnableWindow();
-	GetDlgItem(IDC_BTN_TEST)->EnableWindow();
-	AddContent(L"串口测试完成...\r\n");
+    GetDlgItem(IDC_BTN_TEST)->EnableWindow();
+    strMsg.Format(L"第%d次测试完成...\r\n", m_test_times);
+    AddContent(strMsg);
+    AddContent(L"\r\n============================================\r\n\r\n");
 	m_test_model = false;
 
-	if (((CButton*)GetDlgItem(IDC_CHECK_ALWAYS_TEST))->GetCheck()) 
-	{
+	if (((CButton*)GetDlgItem(IDC_CHECK_ALWAYS_TEST))->GetCheck()) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+		m_test_times++;
 		OnBnClickedBtnTest();
+	}
+    else {
+        m_test_times = 1;
 	}
 }
 
@@ -314,16 +339,28 @@ void CcomtoolDlg::OnBnClickedBtnSend()
 	DWORD dwWrited;
 	CString strSendMsg;
 	GetDlgItemText(IDC_EDIT_SEND, strSendMsg);
+	OVERLAPPED ov;
+	ZeroMemory(&ov, sizeof(ov));
+	ov.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+	BOOL bRet;
 	if (((CButton*)GetDlgItem(IDC_CHECK_HEX_SEND))->GetCheck()) {
 		std::vector<BYTE> data;
 		Hex2Data(strSendMsg, data);
-		WriteFile(m_port, &data[0], data.size(), &dwWrited, NULL);
+		bRet = WriteFile(m_hSerialComm, &data[0], data.size(), &dwWrited, &ov);
 	}
 	else 
 	{
-		WriteFile(m_port, strSendMsg.GetBuffer(strSendMsg.GetLength()), strSendMsg.GetLength(), &dwWrited, NULL);
+		bRet = WriteFile(m_hSerialComm, strSendMsg.GetBuffer(strSendMsg.GetLength()), strSendMsg.GetLength(), &dwWrited, &ov);
 		strSendMsg.ReleaseBuffer();
 	}
+
+    if (!bRet) {
+        if (GetLastError() == ERROR_IO_PENDING) {
+            if (!GetOverlappedResult(m_hSerialComm, &ov, &dwWrited, TRUE)) {
+				return;
+            }
+        }
+    }
 }
 
 
@@ -385,41 +422,75 @@ void CcomtoolDlg::Data2Hex(CString& str, const std::vector<BYTE>& data)
 
 void CcomtoolDlg::ReadThread()
 {
-	std::vector<BYTE> readData;
-	std::vector<BYTE> data;
-	readData.resize(4096);
-	DWORD dwReaded;
-	CString strData;
-	while (m_port)
+    std::vector<BYTE> readData;
+    std::vector<BYTE> data;
+    readData.resize(4096);
+    DWORD dwReaded;
+    CString strData;
+    DWORD dwEventMask;
+
+    SetCommMask(m_hSerialComm, EV_RXCHAR);
+
+    OVERLAPPED ov; 
+	ZeroMemory(&ov, sizeof(ov));
+	ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+    while (m_hSerialComm) 
 	{
-		ReadFile(m_port, &readData[0], 4095, &dwReaded, NULL);
-		if (dwReaded > 0) 
-		{
-			data.resize(dwReaded);
-			std::copy(readData.begin(), readData.begin() + dwReaded, data.begin());
-			if (((CButton*)GetDlgItem(IDC_CHECK_HEX_DISPLAY))->GetCheck()) 
-			{
-				Data2Hex(strData, data);
-			}
-			else 
-			{
-				strData = CString(&data[0]);
-			}
-			if(m_test_model)
-			{
-				AddContent(L"收到数据，通信成功...\r\n");
-			}
-			else 
-			{
-				AddContent(strData, dwReaded);
-			}
-		} 
-		else 
-		{
-			Sleep(200);
-		}
-		strData.Empty();
-	}
+        if (!WaitCommEvent(m_hSerialComm, &dwEventMask, &ov)) {
+            if (GetLastError() == ERROR_IO_PENDING) {
+                if (!GetOverlappedResult(m_hSerialComm, &ov, &dwReaded, TRUE)) {
+					break;
+                }
+            }
+            else {
+                break;
+            }
+        }
+
+        if (dwEventMask & EV_RXCHAR)
+        {
+            do
+            {
+				dwReaded = 0;
+                if(!ReadFile(m_hSerialComm, &readData[0], 4095, &dwReaded, &ov))
+                {
+                    if (GetLastError() == ERROR_IO_PENDING) {
+                        if (!GetOverlappedResult(m_hSerialComm, &ov, &dwReaded, TRUE)) {
+							break;
+                        }
+                    }
+                    else {
+                        break;
+                    }
+				}
+                if (dwReaded)
+                {
+                    data.resize(dwReaded);
+                    std::copy(readData.begin(), readData.begin() + dwReaded, data.begin());
+                    if (((CButton*)GetDlgItem(IDC_CHECK_HEX_DISPLAY))->GetCheck())
+                    {
+                        Data2Hex(strData, data);
+                    }
+                    else
+                    {
+                        strData = CString(&data[0]);
+                    }
+                    if (m_test_model)
+                    {
+                        AddContent(L"收到数据，通信成功...\r\n");
+                    }
+                    else
+                    {
+                        AddContent(strData, dwReaded);
+                    }
+                }
+                strData.Empty();
+            } while (dwReaded > 0);
+        }
+    }
+
+	CloseHandle(ov.hEvent);
 }
 
 

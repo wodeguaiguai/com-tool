@@ -44,9 +44,10 @@ public:
 
 private:
 	CEnumerateSerial::CNamesArray m_coms;
-	HANDLE m_port;
+	HANDLE m_hSerialComm;
 	std::thread m_read_thread, m_test_thread;
 	bool m_test_model = false;
+	DWORD m_test_times = 1;
 
 private:
 	BOOL OpenSerialPort(CString strCom);

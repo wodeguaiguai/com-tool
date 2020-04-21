@@ -20,6 +20,7 @@
 #define IDC_CHECK_HEX_SEND              1010
 #define IDC_RECV_NUM                    1011
 #define IDC_CHECK_ALWAYS_TEST           1012
+#define IDC_COMBO_BANDRATE              1015
 
 // Next default values for new objects
 // 
