@@ -60,6 +60,15 @@ CcomtoolDlg::CcomtoolDlg(CWnd* pParent /*=nullptr*/)
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
 
+CcomtoolDlg::~CcomtoolDlg()
+{
+	if (m_hSerialComm)
+	{
+		CloseHandle(m_hSerialComm);
+		m_hSerialComm = NULL;
+	}
+}
+
 void CcomtoolDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
@@ -220,19 +229,38 @@ BOOL CcomtoolDlg::OpenSerialPort(CString strCom)
 	}
 
 	// config com
-    DCB dcbConfig;
+	DCB dcbConfig;
+	SecureZeroMemory(&dcbConfig, sizeof(DCB));
+	dcbConfig.DCBlength = sizeof(DCB);
     if (GetCommState(m_hSerialComm, &dcbConfig))
     {
         CString strBaudRate;
-        GetDlgItemText(IDC_COMBO_COMLIST, strBaudRate);
-        dcbConfig.BaudRate = _ttoi(strBaudRate);
-        dcbConfig.ByteSize = 8;
-        dcbConfig.Parity = NOPARITY;
-        dcbConfig.StopBits = ONESTOPBIT;
-        dcbConfig.fBinary = TRUE;
-        dcbConfig.fParity = TRUE;
+        GetDlgItemText(IDC_COMBO_BANDRATE, strBaudRate);
+		dcbConfig.fBinary = TRUE;
+		dcbConfig.fNull = FALSE;
+		dcbConfig.fAbortOnError = FALSE;
+		dcbConfig.BaudRate = _ttoi(strBaudRate);
+		dcbConfig.ByteSize = 8;
+		dcbConfig.fOutxCtsFlow = FALSE;
+		dcbConfig.fOutxDsrFlow = FALSE;
+		dcbConfig.fDtrControl = DTR_CONTROL_DISABLE;
+		dcbConfig.fDsrSensitivity = FALSE;
+		dcbConfig.fOutX = FALSE;
+		dcbConfig.fInX = FALSE;
+		dcbConfig.fRtsControl = RTS_CONTROL_DISABLE;
+		dcbConfig.fParity = FALSE; // No parity
+		dcbConfig.Parity = NOPARITY;
+		dcbConfig.StopBits = ONESTOPBIT; // One stop bit
     }
 	SetCommState(m_hSerialComm, &dcbConfig);
+
+	::COMMTIMEOUTS timeouts;
+	timeouts.ReadIntervalTimeout = 1;
+	timeouts.ReadTotalTimeoutMultiplier = 0;
+	timeouts.ReadTotalTimeoutConstant = 0;
+	timeouts.WriteTotalTimeoutMultiplier = 0;
+	timeouts.WriteTotalTimeoutConstant = 0;
+	SetCommTimeouts(m_hSerialComm, &timeouts);
 
 	m_read_thread = std::move(std::thread(std::bind(&CcomtoolDlg::ReadThread, this)));
 
@@ -429,7 +457,7 @@ void CcomtoolDlg::ReadThread()
     CString strData;
     DWORD dwEventMask;
 
-    SetCommMask(m_hSerialComm, EV_RXCHAR);
+	SetCommMask(m_hSerialComm, EV_RXCHAR);
 
     OVERLAPPED ov; 
 	ZeroMemory(&ov, sizeof(ov));

@@ -13,6 +13,7 @@ class CcomtoolDlg : public CDialogEx
 // Construction
 public:
 	CcomtoolDlg(CWnd* pParent = nullptr);	// standard constructor
+	~CcomtoolDlg();
 
 // Dialog Data
 #ifdef AFX_DESIGN_TIME
